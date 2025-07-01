@@ -1,21 +1,23 @@
+// app/auth/verify-email/page.tsx
+
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { authService } from '@/lib/api';
-import { CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
+import { useApp } from '@/context/AppContext';
+import Loading from '@/components/ui/Loading'; 
 
-const VerifyEmailPage: React.FC = () => {
+function VerifyEmailComponent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const { login } = useApp(); // We'll re-use the login logic to set the session
+  const [otp, setOtp] = useState(new Array(6).fill(''));
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [canResend, setCanResend] = useState(false);
+  const [countdown, setCountdown] = useState(60);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -23,177 +25,114 @@ const VerifyEmailPage: React.FC = () => {
     if (emailParam) {
       setEmail(decodeURIComponent(emailParam));
     } else {
-      router.push('/auth');
+      toast.error("Email not found. Redirecting...");
+      router.push('/auth/register');
     }
   }, [searchParams, router]);
 
-  // Countdown timer for resend OTP
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (timeLeft > 0 && !canResend) {
-      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-    } else {
-      setCanResend(true);
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
     }
-    return () => clearTimeout(timer);
-  }, [timeLeft, canResend]);
+  }, [countdown]);
 
-  const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return;
-    
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+    const { value } = e.target;
+    if (!/^[0-9]$/.test(value) && value !== '') return;
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
-
-    // Auto-focus next input
     if (value && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
   };
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').slice(0, 6);
-    const newOtp = pastedData.split('');
-    while (newOtp.length < 6) newOtp.push('');
-    setOtp(newOtp);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const otpString = otp.join('');
     if (otpString.length !== 6) {
-      toast.error('Please enter the complete 6-digit OTP');
+      toast.error('Please enter the complete 6-digit OTP.');
       return;
     }
-
     setIsLoading(true);
     try {
-      const response = await authService.verifyEmail({
-        email,
-        otp: otpString
-      });
-
-      toast.success('Email verified successfully!');
-      router.push('/auth?verified=true');
+      const { user, accessToken, refreshToken } = await authService.verifyEmail({ email, otp: otpString });
+      // The backend returns tokens, so we set them and re-initialize the app state
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      // We can leverage a manual re-init or just redirect and let the main app layout handle it.
+      // For a better UX, we'll force a reload to re-trigger initializeApp in the context.
+      toast.success('Email verified successfully! Welcome!');
+      window.location.href = '/'; // Force a full reload to re-init context
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Invalid OTP');
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+      toast.error(error.response?.data?.message || 'Invalid or expired OTP.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleResendOtp = async () => {
-    if (!canResend) return;
-
+  const handleResend = async () => {
+    if (countdown > 0) return;
     setIsResending(true);
     try {
       await authService.resendOTP({ email });
-      toast.success('New OTP sent to your email');
-      setTimeLeft(60);
-      setCanResend(false);
-      setOtp(['', '', '', '', '', '']);
-      inputRefs.current[0]?.focus();
+      toast.success('A new OTP has been sent to your email.');
+      setCountdown(60);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to resend OTP');
+      toast.error(error.response?.data?.message || 'Failed to resend OTP.');
     } finally {
       setIsResending(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <div className="mx-auto w-16 h-16 bg-amazon-100 rounded-full flex items-center justify-center mb-4">
-          <ClockIcon className="w-8 h-8 text-amazon-600" />
-        </div>
-        <h2 className="text-3xl font-bold text-gray-900">Verify your email</h2>
-        <p className="mt-2 text-gray-600">
-          We've sent a 6-digit verification code to
-        </p>
-        <p className="font-semibold text-gray-900">{email}</p>
-      </div>
-
+    <div className="space-y-6 text-center">
+      <h2 className="text-3xl font-bold text-gray-900">Check your email</h2>
+      <p className="text-gray-600">We've sent a 6-digit code to <span className="font-semibold text-gray-800">{email}</span></p>
+      
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* OTP Input */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-4 text-center">
-            Enter the 6-digit code
-          </label>
-          <div className="flex justify-center space-x-3" onPaste={handlePaste}>
-            {otp.map((digit, index) => (
-              <input
-                key={index}
-                ref={(el) => { inputRefs.current[index] = el; }}
-                type="text"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => handleOtpChange(index, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(index, e)}
-                className="w-12 h-12 text-center text-xl font-bold border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amazon-500 focus:border-amazon-500"
-                pattern="[0-9]"
-                inputMode="numeric"
-              />
-            ))}
-          </div>
+        <div className="flex justify-center gap-2">
+          {otp.map((digit, index) => (
+            <input
+              key={index}
+              ref={(el) => { inputRefs.current[index] = el; }}
+              type="text"
+              maxLength={1}
+              value={digit}
+              onChange={(e) => handleChange(e, index)}
+              onKeyDown={(e) => handleKeyDown(e, index)}
+              className="w-12 h-14 text-center text-2xl font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amazon-500"
+              required
+            />
+          ))}
         </div>
-
-        {/* Verify Button */}
-        <button
-          type="submit"
-          disabled={isLoading || otp.some(digit => !digit)}
-          className="w-full bg-amazon-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-amazon-700 focus:outline-none focus:ring-2 focus:ring-amazon-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {isLoading ? (
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Verifying...
-            </div>
-          ) : (
-            'Verify Email'
-          )}
+        <button type="submit" disabled={isLoading} className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amazon-600 hover:bg-amazon-700 disabled:opacity-50">
+          {isLoading ? 'Verifying...' : 'Verify Email'}
         </button>
-
-        {/* Resend OTP */}
-        <div className="text-center">
-          <p className="text-gray-600 mb-2">Didn't receive the code?</p>
-          {canResend ? (
-            <button
-              type="button"
-              onClick={handleResendOtp}
-              disabled={isResending}
-              className="text-amazon-600 hover:text-amazon-700 font-semibold disabled:opacity-50"
-            >
-              {isResending ? 'Sending...' : 'Resend OTP'}
-            </button>
-          ) : (
-            <p className="text-gray-500">
-              Resend in {timeLeft} seconds
-            </p>
-          )}
-        </div>
       </form>
 
-      {/* Back to Login */}
-      <div className="text-center">
-        <Link
-          href="/auth"
-          className="text-gray-600 hover:text-gray-700"
-        >
-          ← Back to login
-        </Link>
+      <div>
+        <p className="text-sm text-gray-600">Didn't receive the code?</p>
+        <button onClick={handleResend} disabled={isResending || countdown > 0} className="font-medium text-amazon-600 hover:text-amazon-500 disabled:opacity-50 disabled:cursor-not-allowed">
+          {isResending ? 'Sending...' : countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
+        </button>
       </div>
     </div>
   );
-};
+}
 
-export default VerifyEmailPage;
+// Wrap in Suspense because useSearchParams requires it
+export default function VerifyEmailPage() {
+    return (
+        <Suspense fallback={<Loading text="Loading..." />}>
+            <VerifyEmailComponent />
+        </Suspense>
+    )
+}

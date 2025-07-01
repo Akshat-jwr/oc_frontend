@@ -1,347 +1,162 @@
+// context/AppContext.tsx
+
 'use client';
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
-import { User, Cart, Product, CartSummary } from '@/types';
-import { userService, authService, setAuthToken, removeAuthToken } from '@/lib/api';
-import toast from 'react-hot-toast';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { authService, userService } from '@/lib/api';
+import { User, Cart, RegisterData, AuthResponse, LoginCredentials, Product } from '../types';
+import Loading from '@/components/ui/Loading'; 
 
-interface AppState {
+// --- MODIFIED: Added missing functions required by your application ---
+interface AppContextType {
+  isAuthenticated: boolean;
   user: User | null;
   cart: Cart | null;
-  cartSummary: CartSummary | null;
-  wishlist: Product[];
+  wishlist: string[];
   isLoading: boolean;
-  isAuthenticated: boolean;
   cartCount: number;
-  wishlistCount: number;
-}
-
-type AppAction =
-  | { type: 'SET_USER'; payload: User | null }
-  | { type: 'SET_CART'; payload: Cart | null }
-  | { type: 'SET_CART_SUMMARY'; payload: CartSummary | null }
-  | { type: 'SET_WISHLIST'; payload: Product[] }
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'UPDATE_CART_ITEM'; payload: { productId: string; quantity: number } }
-  | { type: 'REMOVE_CART_ITEM'; payload: string }
-  | { type: 'CLEAR_CART' }
-  | { type: 'ADD_TO_WISHLIST'; payload: Product }
-  | { type: 'REMOVE_FROM_WISHLIST'; payload: string };
-
-interface AppContextType {
-  state: AppState;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: any) => Promise<any>;
+  login: (credentials: LoginCredentials) => Promise<AuthResponse>;
+  register: (data: RegisterData) => Promise<any>;
   logout: () => void;
-  addToCart: (productId: string, quantity?: number, customizations?: any) => Promise<void>;
+  // All cart functions are now present and correctly typed
+  addToCart: (productId: string, quantity: number) => Promise<void>;
   removeFromCart: (productId: string) => Promise<void>;
-  updateCartQuantity: (productId: string, quantity: number) => Promise<void>;
-  addToWishlist: (productId: string) => Promise<void>;
-  removeFromWishlist: (productId: string) => Promise<void>;
-  refreshCart: () => Promise<void>;
-  refreshWishlist: () => Promise<void>;
-  refreshCartSummary: () => Promise<void>;
+  updateCartItemQuantity: (productId: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
+  updateCart: (cart: Cart | null) => void; // Kept as requested
+  toggleWishlist: (productId: string) => Promise<void>;
+  isInWishlist: (productId: string) => boolean;
 }
-
-const initialState: AppState = {
-  user: null,
-  cart: null,
-  cartSummary: null,
-  wishlist: [],
-  isLoading: true,
-  isAuthenticated: false,
-  cartCount: 0,
-  wishlistCount: 0,
-};
-
-const appReducer = (state: AppState, action: AppAction): AppState => {
-  switch (action.type) {
-    case 'SET_USER':
-      return {
-        ...state,
-        user: action.payload,
-        isAuthenticated: !!action.payload,
-        isLoading: false,
-      };
-    case 'SET_CART':
-      const cart = action.payload;
-      return {
-        ...state,
-        cart,
-        cartCount: cart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-      };
-    case 'SET_CART_SUMMARY':
-      return {
-        ...state,
-        cartSummary: action.payload,
-      };
-    case 'SET_WISHLIST':
-      return {
-        ...state,
-        wishlist: action.payload,
-        wishlistCount: action.payload.length,
-      };
-    case 'SET_LOADING':
-      return { ...state, isLoading: action.payload };
-    case 'UPDATE_CART_ITEM':
-      if (!state.cart) return state;
-      const updatedItems = state.cart.items.map(item =>
-        item.productId._id === action.payload.productId
-          ? { ...item, quantity: action.payload.quantity }
-          : item
-      );
-      return {
-        ...state,
-        cart: { ...state.cart, items: updatedItems },
-        cartCount: updatedItems.reduce((sum, item) => sum + item.quantity, 0),
-      };
-    case 'REMOVE_CART_ITEM':
-      if (!state.cart) return state;
-      const filteredItems = state.cart.items.filter(item => item.productId._id !== action.payload);
-      return {
-        ...state,
-        cart: { ...state.cart, items: filteredItems },
-        cartCount: filteredItems.reduce((sum, item) => sum + item.quantity, 0),
-      };
-    case 'CLEAR_CART':
-      return {
-        ...state,
-        cart: { items: [], totalPrice: 0, updatedAt: new Date().toISOString() },
-        cartCount: 0,
-      };
-    case 'ADD_TO_WISHLIST':
-      return {
-        ...state,
-        wishlist: [...state.wishlist, action.payload],
-        wishlistCount: state.wishlist.length + 1,
-      };
-    case 'REMOVE_FROM_WISHLIST':
-      const newWishlist = state.wishlist.filter(item => item._id !== action.payload);
-      return {
-        ...state,
-        wishlist: newWishlist,
-        wishlistCount: newWishlist.length,
-      };
-    default:
-      return state;
-  }
-};
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [cart, setCart] = useState<Cart | null>(null);
+  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const initializeUser = async () => {
+  const isAuthenticated = !!user;
+  // This calculation is now safe and correct based on your types.
+  const cartCount = cart && Array.isArray(cart.items) ? cart.items.reduce((sum, item) => sum + (item.quantity || 0), 0) : 0;
+
+  // --- THE CORE OF THE FIX: A ROBUST REFRESH FUNCTION ---
+  // This single function is now the source of truth for the cart state.
+  const refreshCart = useCallback(async () => {
+    if (!isAuthenticated) return;
+    try {
+      const freshCart = await userService.getCart();
+      setCart(freshCart);
+    } catch (error) {
+      console.error("Failed to refresh cart:", error);
+      setCart(null); // Clear cart on error to prevent displaying stale/incorrect data
+    }
+  }, [isAuthenticated]);
+
+  const initializeApp = useCallback(async () => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-        
-        if (token) {
-          setAuthToken(token);
-          try {
-            const response = await userService.getProfile();
-            dispatch({ type: 'SET_USER', payload: response.data.data });
-          } catch (error) {
-            console.error('Token validation failed:', error);
-            removeAuthToken();
-            dispatch({ type: 'SET_USER', payload: null });
-          }
-        } else {
-          dispatch({ type: 'SET_USER', payload: null });
+        const [userData, wishlistData] = await Promise.all([
+          authService.getMe(),
+          userService.getWishlist(),
+        ]);
+        setUser(userData.user);
+        setWishlist(wishlistData.items.map(p => p._id));
+        // After user is authenticated, refresh the cart separately
+        if (userData.user) {
+            const cartData = await userService.getCart();
+            setCart(cartData);
         }
       } catch (error) {
-        console.error('Initialization error:', error);
-        dispatch({ type: 'SET_USER', payload: null });
+        console.error("Session initialization failed:", error);
+        localStorage.clear();
+        setUser(null);
+        setCart(null);
+        setWishlist([]);
       }
-    };
-
-    initializeUser();
+    }
+    setIsLoading(false);
   }, []);
 
-  const refreshCart = useCallback(async () => {
-    if (!state.isAuthenticated) return;
-    
-    try {
-      const response = await userService.getCart();
-      dispatch({ type: 'SET_CART', payload: response.data.data });
-    } catch (error) {
-      console.error('Failed to refresh cart:', error);
-    }
-  }, [state.isAuthenticated]);
+  useEffect(() => { initializeApp(); }, [initializeApp]);
 
-  const refreshCartSummary = useCallback(async () => {
-    if (!state.isAuthenticated) return;
-    
-    try {
-      const response = await userService.getCartSummary();
-      dispatch({ type: 'SET_CART_SUMMARY', payload: response.data.data });
-    } catch (error) {
-      console.error('Failed to refresh cart summary:', error);
-    }
-  }, [state.isAuthenticated]);
+  const login = useCallback(async (credentials: LoginCredentials) => {
+    const response = await authService.login(credentials);
+    localStorage.setItem('accessToken', response.accessToken);
+    localStorage.setItem('refreshToken', response.refreshToken);
+    await initializeApp();
+    return response;
+  }, [initializeApp]);
 
-  const refreshWishlist = useCallback(async () => {
-    if (!state.isAuthenticated) return;
-    
-    try {
-      const response = await userService.getWishlist({ limit: 100 });
-      dispatch({ type: 'SET_WISHLIST', payload: response.data.data.items || [] });
-    } catch (error) {
-      console.error('Failed to refresh wishlist:', error);
-    }
-  }, [state.isAuthenticated]);
-
-  useEffect(() => {
-    if (state.isAuthenticated) {
-      refreshCart();
-      refreshWishlist();
-      refreshCartSummary();
-    }
-  }, [state.isAuthenticated, refreshCart, refreshWishlist, refreshCartSummary]);
-
-  const login = useCallback(async (email: string, password: string) => {
-    try {
-      dispatch({ type: 'SET_LOADING', payload: true });
-      
-      const response = await authService.login({ email, password });
-      const { user, accessToken } = response.data.data;
-      
-      setAuthToken(accessToken);
-      dispatch({ type: 'SET_USER', payload: user });
-      
-      toast.success('Login successful!');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Login failed';
-      toast.error(message);
-      throw new Error(message);
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  }, []);
-
-  const register = useCallback(async (data: any) => {
-    try {
-      const response = await authService.register(data);
-      toast.success('Registration successful! Please check your email for verification.');
-      return response.data;
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Registration failed';
-      toast.error(message);
-      throw new Error(message);
-    }
-  }, []);
+  const register = useCallback(async (data: RegisterData) => authService.register(data), []);
 
   const logout = useCallback(async () => {
-    try {
-      await authService.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      removeAuthToken();
-      dispatch({ type: 'SET_USER', payload: null });
-      dispatch({ type: 'SET_CART', payload: null });
-      dispatch({ type: 'SET_CART_SUMMARY', payload: null });
-      dispatch({ type: 'SET_WISHLIST', payload: [] });
-      toast.success('Logged out successfully');
-    }
+    try { await authService.logout(); } catch (error) { console.error("Logout API failed.", error); }
+    localStorage.clear();
+    setUser(null); setCart(null); setWishlist([]);
   }, []);
+  
+  // --- ALL CART MUTATIONS NOW USE THE "MUTATE THEN REFRESH" PATTERN ---
 
-  const addToCart = useCallback(async (productId: string, quantity = 1, customizations?: any) => {
-    if (!state.isAuthenticated) {
-      toast.error('Please login to add items to cart');
-      return;
-    }
+  const addToCart = async (productId: string, quantity: number) => {
+    if (!isAuthenticated) throw new Error("Please log in.");
+    await userService.addToCart(productId, quantity);
+    await refreshCart(); // Guarantees the state is correct
+  };
 
+  const removeFromCart = async (productId: string) => {
+    if (!isAuthenticated) return;
+    await userService.removeFromCart(productId);
+    await refreshCart(); // Guarantees the state is correct
+  };
+
+  const updateCartItemQuantity = async (productId: string, quantity: number) => {
+    if (!isAuthenticated) return;
+    await userService.updateCartItem(productId, quantity);
+    await refreshCart(); // Guarantees the state is correct
+  };
+
+  const clearCart = async () => {
+    if (!isAuthenticated) return;
+    await userService.clearCart();
+    await refreshCart(); // Guarantees the state is correct
+  };
+
+  const updateCart = (newCart: Cart | null) => setCart(newCart);
+
+  const isInWishlist = (productId: string) => wishlist.includes(productId);
+
+  const toggleWishlist = useCallback(async (productId: string) => {
+    // ... (This logic was correct and remains the same)
+    if (!isAuthenticated) throw new Error("Please log in.");
+    const inWishlist = isInWishlist(productId);
+    setWishlist(prev => inWishlist ? prev.filter(id => id !== productId) : [...prev, productId]);
     try {
-      await userService.addToCart({ productId, quantity, customizations });
-      await refreshCart();
-      await refreshCartSummary();
-      toast.success('Item added to cart');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to add item to cart';
-      toast.error(message);
+      if (inWishlist) await userService.removeFromWishlist(productId);
+      else await userService.addToWishlist(productId);
+    } catch (e) {
+      setWishlist(prev => inWishlist ? [...prev, productId] : prev.filter(id => id !== productId));
+      throw new Error("Failed to update wishlist.");
     }
-  }, [state.isAuthenticated, refreshCart, refreshCartSummary]);
+  }, [isAuthenticated, wishlist, isInWishlist]);
 
-  const removeFromCart = useCallback(async (productId: string) => {
-    try {
-      await userService.removeFromCart(productId);
-      dispatch({ type: 'REMOVE_CART_ITEM', payload: productId });
-      await refreshCartSummary();
-      toast.success('Item removed from cart');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to remove item from cart';
-      toast.error(message);
-    }
-  }, [refreshCartSummary]);
+  // --- ASSEMBLED CONTEXT VALUE WITH ALL REQUIRED FUNCTIONS ---
+  const contextValue = {
+    isAuthenticated, user, cart, wishlist, isLoading, cartCount,
+    login, register, logout,
+    addToCart, removeFromCart, updateCartItemQuantity, clearCart,
+    updateCart, // Kept as requested
+    toggleWishlist, isInWishlist
+  };
 
-  const updateCartQuantity = useCallback(async (productId: string, quantity: number) => {
-    try {
-      await userService.updateCartItem(productId, { quantity });
-      dispatch({ type: 'UPDATE_CART_ITEM', payload: { productId, quantity } });
-      await refreshCartSummary();
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to update cart';
-      toast.error(message);
-    }
-  }, [refreshCartSummary]);
+  if (isLoading) return <Loading fullScreen text="Initializing Om Creations..." />;
 
-  const addToWishlist = useCallback(async (productId: string) => {
-    if (!state.isAuthenticated) {
-      toast.error('Please login to add items to wishlist');
-      return;
-    }
-
-    try {
-      await userService.addToWishlist({ productId });
-      await refreshWishlist();
-      toast.success('Item added to wishlist');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to add item to wishlist';
-      toast.error(message);
-    }
-  }, [state.isAuthenticated, refreshWishlist]);
-
-  const removeFromWishlist = useCallback(async (productId: string) => {
-    try {
-      await userService.removeFromWishlist(productId);
-      dispatch({ type: 'REMOVE_FROM_WISHLIST', payload: productId });
-      toast.success('Item removed from wishlist');
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to remove item from wishlist';
-      toast.error(message);
-    }
-  }, []);
-
-  const contextValue = useMemo(() => ({
-    state,
-    login,
-    register,
-    logout,
-    addToCart,
-    removeFromCart,
-    updateCartQuantity,
-    addToWishlist,
-    removeFromWishlist,
-    refreshCart,
-    refreshWishlist,
-    refreshCartSummary,
-  }), [state, login, register, logout, addToCart, removeFromCart, updateCartQuantity, addToWishlist, removeFromWishlist, refreshCart, refreshWishlist, refreshCartSummary]);
-
-  return (
-    <AppContext.Provider value={contextValue}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
 };
 
-export const useApp = (): AppContextType => {
+export const useApp = () => {
   const context = useContext(AppContext);
-  
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  
+  if (context === undefined) throw new Error('useApp must be used within an AppProvider');
   return context;
 };

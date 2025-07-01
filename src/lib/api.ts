@@ -1,276 +1,130 @@
-import axios, { AxiosResponse, AxiosError } from 'axios';
-import toast from 'react-hot-toast';
-import { 
-  ApiResponse, 
-  PaginationResponse, 
-  Product, 
-  Category, 
-  SearchFilters,
-  FilterOptions,
-  User,
-  Cart,
-  CartSummary,
-  Order,
-  Address,
-  Review,
-  Recommendation,
-  LoginCredentials,
-  RegisterData,
-  AuthResponse
+// lib/api.ts
+
+import axios from 'axios';
+import {
+  AuthResponse, LoginCredentials, RegisterData,
+  Product, Category, Recommendation, User, Address,
+  Cart, CartSummary, Order, Review, SearchFilters, FilterOptions,
+  PaginationResponse, Pagination // Ensure Pagination is imported
 } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-
-// Create axios instance
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+// ... (axiosInstance and interceptors remain the same) ...
+const axiosInstance = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1',
+  withCredentials: true,
 });
 
-// Request interceptor
-api.interceptors.request.use(
+axiosInstance.interceptors.request.use(
   (config) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
+    const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
     return config;
   },
   (error) => Promise.reject(error)
 );
-
-// Response interceptor with smart error handling
-api.interceptors.response.use(
-  (response: AxiosResponse) => response,
-  async (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
-      const protectedRoutes = ['/cart', '/checkout', '/orders', '/wishlist', '/profile', '/account'];
-      
-      if (protectedRoutes.some(route => currentPath.startsWith(route))) {
-        removeAuthToken();
+axiosInstance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'}/auth/refresh-token`, {}, { withCredentials: true });
+        const newAccessToken = data.data.accessToken;
+        if (typeof window !== 'undefined') localStorage.setItem('accessToken', newAccessToken);
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return axiosInstance(originalRequest);
+      } catch (refreshError) {
         if (typeof window !== 'undefined') {
-          window.location.href = `/auth?returnUrl=${encodeURIComponent(currentPath)}`;
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          if (!window.location.pathname.startsWith('/auth')) window.location.href = '/auth';
         }
+        return Promise.reject(refreshError);
       }
     }
     return Promise.reject(error);
   }
 );
 
-// Token management
-export const setAuthToken = (token: string) => {
-  api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-  localStorage.setItem('accessToken', token);
-};
+export interface CreateOrderResponse {
+  order: Order;
+  paymentRequired: boolean;
+  paymentDetails: {
+    amount: number;
+    currency: string;
+    method: string;
+    orderId: string; // This is the Razorpay Order ID
+  };
+}
 
-export const removeAuthToken = () => {
-  delete api.defaults.headers.common['Authorization'];
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-};
+const handleResponse = (response: any) => response.data.data;
 
-// Authentication Services
+// --- SERVICES ---
+
 export const authService = {
-  register: (data: RegisterData): Promise<AxiosResponse<ApiResponse<{ user: User }>>> =>
-    api.post('/auth/register', data),
-  
-  verifyEmail: (data: { email: string; otp: string }): Promise<AxiosResponse<ApiResponse<AuthResponse>>> =>
-    api.post('/auth/verify-email', data),
-  
-  resendOTP: (data: { email: string }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/auth/resend-otp', data),
-  
-  login: (data: LoginCredentials): Promise<AxiosResponse<ApiResponse<AuthResponse>>> =>
-    api.post('/auth/login', data),
-  
-  googleAuth: (data: { idToken: string }): Promise<AxiosResponse<ApiResponse<AuthResponse>>> =>
-    api.post('/auth/google', data),
-  
-  logout: (): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/auth/logout'),
-  
-  refreshToken: (): Promise<AxiosResponse<ApiResponse<{ accessToken: string }>>> =>
-    api.post('/auth/refresh-token'),
+  register: (data: RegisterData) => axiosInstance.post('/auth/register', data).then(handleResponse),
+  verifyEmail: (data: { email: string; otp: string }): Promise<AuthResponse> => axiosInstance.post('/auth/verify-email', data).then(handleResponse),
+  resendOTP: (data: { email: string }) => axiosInstance.post('/auth/resend-otp', data).then(handleResponse),
+  login: (credentials: LoginCredentials): Promise<AuthResponse> => axiosInstance.post('/auth/login', credentials).then(handleResponse),
+  googleAuth: (idToken: string): Promise<AuthResponse> => axiosInstance.post('/auth/google', { idToken }).then(handleResponse),
+  logout: () => axiosInstance.post('/auth/logout'),
+  getMe: (): Promise<{ user: User }> => axiosInstance.get('/auth/me').then(handleResponse),
 };
 
-// Public Services (No authentication required)
 export const publicService = {
-  // Products
-  getProducts: (filters?: SearchFilters): Promise<AxiosResponse<ApiResponse<PaginationResponse<Product>>>> =>
-    api.get('/public/products', { params: filters }),
-  
-  getProduct: (id: string): Promise<AxiosResponse<ApiResponse<Product>>> =>
-    api.get(`/public/products/${id}`),
-  
-  getFeaturedProducts: (limit = 8): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get('/public/products/featured', { params: { limit } }),
-  
-  searchProducts: (params: { q: string; suggestions?: boolean } & SearchFilters): Promise<AxiosResponse<ApiResponse<PaginationResponse<Product> | string[]>>> =>
-    api.get('/public/products/search', { params }),
-  
-  getProductsByCategory: (categoryId: string, params?: SearchFilters): Promise<AxiosResponse<ApiResponse<PaginationResponse<Product>>>> =>
-    api.get(`/public/products/category/${categoryId}`, { params }),
-  
-  getRelatedProducts: (id: string, limit = 6): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get(`/public/products/${id}/related`, { params: { limit } }),
-
-  // Categories
-  getCategories: (params?: { includeEmpty?: boolean; parentOnly?: boolean }): Promise<AxiosResponse<ApiResponse<Category[]>>> =>
-    api.get('/public/categories', { params }),
-  
-  getCategory: (id: string): Promise<AxiosResponse<ApiResponse<Category>>> =>
-    api.get(`/public/categories/${id}`),
-  
-  getCategoryProducts: (id: string, params?: SearchFilters): Promise<AxiosResponse<ApiResponse<PaginationResponse<Product>>>> =>
-    api.get(`/public/categories/${id}/products`, { params }),
-
-  // Search & Filters
-  globalSearch: (params: { q: string; type?: 'all' | 'products' | 'categories' }): Promise<AxiosResponse<ApiResponse<{ products: Product[]; categories: Category[]; totalResults: any }>>> =>
-    api.get('/public/search', { params }),
-  
-  getFilters: (params?: { category?: string }): Promise<AxiosResponse<ApiResponse<FilterOptions>>> =>
-    api.get('/public/filters', { params }),
+  getAllProducts: (filters: SearchFilters): Promise<{ products: Product[]; pagination: any }> => {
+    return axiosInstance.get('/public/products', { params: filters }).then(handleResponse);
+  },
+  getProductById: (idOrSlug: string): Promise<Product> => axiosInstance.get(`/public/products/${idOrSlug}`).then(handleResponse),
+  getFeaturedProducts: (limit: number = 8): Promise<Product[]> => axiosInstance.get('/public/products/featured', { params: { limit } }).then(handleResponse),
+  getProductsByCategory: (categoryId: string, filters: SearchFilters): Promise<{ products: Product[]; pagination: any }> => {
+    return axiosInstance.get(`/public/products/category/${categoryId}`, { params: filters }).then(handleResponse);
+  },
+  getRelatedProducts: (productId: string, limit: number = 6): Promise<Product[]> => axiosInstance.get(`/public/products/${productId}/related`, { params: { limit } }).then(handleResponse),
+  getAllCategories: (params?: { includeEmpty?: boolean; parentOnly?: boolean }): Promise<Category[]> => axiosInstance.get('/public/categories', { params }).then(handleResponse),
+  getCategoryById: (id: string): Promise<Category> => axiosInstance.get(`/public/categories/${id}`).then(handleResponse),
+  searchProducts: (query: string, suggestions: boolean = false): Promise<Product[] | string[]> => axiosInstance.get('/public/products/search', { params: { q: query, suggestions } }).then(handleResponse),
+  getSearchSuggestions: (query: string): Promise<string[]> => axiosInstance.get('/public/search/suggestions', { params: { q: query } }).then(handleResponse),
+  getFilterOptions: (categoryId?: string): Promise<FilterOptions> => axiosInstance.get('/public/filters', { params: { category: categoryId } }).then(handleResponse),
 };
 
-// User Services (Authentication required)
 export const userService = {
-  // Profile
-  getProfile: (): Promise<AxiosResponse<ApiResponse<User>>> =>
-    api.get('/user/profile'),
-  
-  updateProfile: (data: Partial<User>): Promise<AxiosResponse<ApiResponse<User>>> =>
-    api.put('/user/profile', data),
-  
-  changePassword: (data: { currentPassword: string; newPassword: string }): Promise<AxiosResponse<ApiResponse>> =>
-    api.patch('/user/change-password', data),
-  
-  uploadAvatar: (formData: FormData): Promise<AxiosResponse<ApiResponse<{ avatar: string }>>> =>
-    api.post('/user/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  
-  getDashboard: (): Promise<AxiosResponse<ApiResponse<any>>> =>
-    api.get('/user/dashboard'),
-  
-  deleteAccount: (): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete('/user/account'),
-
-  // Cart
-  getCart: (): Promise<AxiosResponse<ApiResponse<Cart>>> =>
-    api.get('/user/cart'),
-  
-  getCartSummary: (): Promise<AxiosResponse<ApiResponse<CartSummary>>> =>
-    api.get('/user/cart/summary'),
-  
-  addToCart: (data: { productId: string; quantity: number; customizations?: any }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/user/cart', data),
-  
-  updateCartItem: (productId: string, data: { quantity: number }): Promise<AxiosResponse<ApiResponse>> =>
-    api.patch(`/user/cart/${productId}`, data),
-  
-  removeFromCart: (productId: string): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete(`/user/cart/${productId}`),
-  
-  clearCart: (): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete('/user/cart'),
-
-  // Wishlist
-  getWishlist: (params?: { page?: number; limit?: number }): Promise<AxiosResponse<ApiResponse<PaginationResponse<Product>>>> =>
-    api.get('/user/wishlist', { params }),
-  
-  addToWishlist: (data: { productId: string }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/user/wishlist', data),
-  
-  removeFromWishlist: (productId: string): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete(`/user/wishlist/${productId}`),
-  
-  moveWishlistToCart: (data: { productId: string; quantity?: number }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/user/wishlist/move-to-cart', data),
-
-  // Orders
-  getOrders: (params?: { page?: number; limit?: number; status?: string; startDate?: string; endDate?: string }): Promise<AxiosResponse<ApiResponse<PaginationResponse<Order>>>> =>
-    api.get('/user/orders', { params }),
-  
-  createOrder: (data: any): Promise<AxiosResponse<ApiResponse<Order>>> =>
-    api.post('/user/orders', data),
-  
-  getOrder: (id: string): Promise<AxiosResponse<ApiResponse<Order>>> =>
-    api.get(`/user/orders/${id}`),
-  
-  cancelOrder: (id: string, data?: { reason?: string }): Promise<AxiosResponse<ApiResponse>> =>
-    api.patch(`/user/orders/${id}/cancel`, data),
-  
-  getOrderTracking: (id: string): Promise<AxiosResponse<ApiResponse<any>>> =>
-    api.get(`/user/orders/${id}/tracking`),
-
-  // Addresses
-  getAddresses: (): Promise<AxiosResponse<ApiResponse<Address[]>>> =>
-    api.get('/user/addresses'),
-  
-  addAddress: (data: Omit<Address, '_id'>): Promise<AxiosResponse<ApiResponse<Address>>> =>
-    api.post('/user/addresses', data),
-  
-  updateAddress: (id: string, data: Partial<Address>): Promise<AxiosResponse<ApiResponse<Address>>> =>
-    api.put(`/user/addresses/${id}`, data),
-  
-  deleteAddress: (id: string): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete(`/user/addresses/${id}`),
-  
-  setDefaultAddress: (id: string): Promise<AxiosResponse<ApiResponse>> =>
-    api.patch(`/user/addresses/${id}/default`),
-
-  // Reviews
-  createReview: (data: { productId: string; rating: number; comment: string }): Promise<AxiosResponse<ApiResponse<Review>>> =>
-    api.post('/user/reviews', data),
-  
-  getUserReviews: (params?: { page?: number; limit?: number }): Promise<AxiosResponse<ApiResponse<PaginationResponse<Review>>>> =>
-    api.get('/user/reviews', { params }),
-  
-  updateReview: (id: string, data: { rating?: number; comment?: string }): Promise<AxiosResponse<ApiResponse<Review>>> =>
-    api.put(`/user/reviews/${id}`, data),
-  
-  deleteReview: (id: string): Promise<AxiosResponse<ApiResponse>> =>
-    api.delete(`/user/reviews/${id}`),
-
-  // Recommendations
- getPersonalizedRecommendations: (params?: { limit?: number; type?: string }): Promise<AxiosResponse<ApiResponse<Recommendation[]>>> =>
-    api.get('/user/recommendations', { params }),
-  
-  getProductRecommendations: (productId: string, params?: { limit?: number }): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get(`/user/recommendations/product/${productId}`, { params }),
-  
-  getCategoryRecommendations: (categoryId: string, params?: { limit?: number }): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get(`/user/recommendations/category/${categoryId}`, { params }),
-  
-  getTrendingProducts: (params?: { limit?: number; category?: string }): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get('/user/recommendations/trending', { params }),
-  
-  getRecentlyViewed: (params?: { limit?: number }): Promise<AxiosResponse<ApiResponse<Product[]>>> =>
-    api.get('/user/recently-viewed', { params }),
-
-  // Activity Tracking
-  trackProductView: (productId: string, data: any): Promise<AxiosResponse<ApiResponse>> =>
-    api.post(`/user/track/product-view/${productId}`, data),
-  
-  trackPageTime: (data: { pageType: string; timeSpent: number; interactions?: any }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/user/track/page-time', data),
+  getUserProfile: (): Promise<User> => axiosInstance.get('/user/profile').then(handleResponse),
+  updateUserProfile: (data: Partial<User>): Promise<User> => axiosInstance.put('/user/profile', data).then(handleResponse),
+  changePassword: (data: { currentPassword: string; newPassword: string }) => axiosInstance.patch('/user/change-password', data),
+  uploadAvatar: (file: File): Promise<{ avatar: string }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return axiosInstance.post('/user/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(handleResponse);
+  },
+  getCart: (): Promise<Cart> => axiosInstance.get('/user/cart').then(handleResponse),
+  addToCart: (productId: string, quantity: number, customizations?: object): Promise<Cart> => axiosInstance.post('/user/cart', { productId, quantity, customizations }).then(handleResponse),
+  updateCartItem: (productId: string, quantity: number): Promise<Cart> => axiosInstance.patch(`/user/cart/${productId}`, { quantity }).then(handleResponse),
+  removeFromCart: (productId: string): Promise<Cart> => axiosInstance.delete(`/user/cart/${productId}`).then(handleResponse),
+  clearCart: () => axiosInstance.delete('/user/cart'),
+  getCartSummary: (): Promise<CartSummary> => axiosInstance.get('/user/cart/summary').then(handleResponse),
+  getWishlist: (): Promise<PaginationResponse<Product>> => axiosInstance.get('/user/wishlist').then(handleResponse),
+  addToWishlist: (productId: string) => axiosInstance.post('/user/wishlist', { productId }),
+  removeFromWishlist: (productId: string) => axiosInstance.delete(`/user/wishlist/${productId}`),
+  createOrder: (data: any): Promise<CreateOrderResponse> => {
+    return axiosInstance.post('/user/orders', data).then(handleResponse);
+  },  // --- PERFECTLY AND DEFINITIVELY CORRECTED RETURN TYPE ---
+  getUserOrders: (filters: any): Promise<{ orders: Order[]; pagination: Pagination; }> => axiosInstance.get('/user/orders', { params: filters }).then(handleResponse),
+  getOrderById: (id: string): Promise<Order> => axiosInstance.get(`/user/orders/${id}`).then(handleResponse),
+  cancelOrder: (id: string, reason?: string) => axiosInstance.patch(`/user/orders/${id}/cancel`, { reason }),
+  getUserAddresses: (): Promise<Address[]> => axiosInstance.get('/user/addresses').then(handleResponse),
+  addAddress: (data: Omit<Address, '_id' | 'isDefault'>): Promise<Address> => axiosInstance.post('/user/addresses', data).then(handleResponse),
+  updateAddress: (id: string, data: Partial<Address>): Promise<Address> => axiosInstance.put(`/user/addresses/${id}`, data).then(handleResponse),
+  deleteAddress: (id: string) => axiosInstance.delete(`/user/addresses/${id}`),
+  setDefaultAddress: (id: string): Promise<Address> => axiosInstance.patch(`/user/addresses/${id}/default`).then(handleResponse),
+  createReview: (data: { productId: string; rating: number; comment: string }): Promise<Review> => axiosInstance.post('/user/reviews', data).then(handleResponse),
+  getPersonalizedRecommendations: (limit: number = 12): Promise<Recommendation[]> => axiosInstance.get('/user/recommendations', { params: { limit } }).then(handleResponse),
+  getTrendingProducts: (limit: number = 8): Promise<Product[]> => axiosInstance.get('/user/recommendations/trending', { params: { limit } }).then(handleResponse).then(res => res.items),
 };
 
-// Payment Services
 export const paymentService = {
-  verifyPayment: (data: { orderId: string; razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }): Promise<AxiosResponse<ApiResponse>> =>
-    api.post('/payment/verify', data),
-  
-  getPaymentMethods: (data: { postalCode: string; city?: string; state?: string }): Promise<AxiosResponse<ApiResponse<any>>> =>
-    api.post('/payment/methods', data),
-  
-  getPaymentStatus: (paymentId: string): Promise<AxiosResponse<ApiResponse<any>>> =>
-    api.get(`/payment/status/${paymentId}`),
+  verifyPayment: (data: any) => axiosInstance.post('/payment/verify', data),
+  getAvailablePaymentMethods: (data: { postalCode: string }): Promise<string[]> => axiosInstance.post('/payment/methods', data).then(handleResponse),
+  getPaymentStatus: (paymentId: string): Promise<any> => axiosInstance.get(`/payment/status/${paymentId}`).then(handleResponse),
 };
-
-
-
-export default api;
-

@@ -1,0 +1,104 @@
+// app/products/[slug]/page.tsx
+
+import React from 'react';
+import { notFound } from 'next/navigation';
+import { publicService } from '@/lib/api';
+import ProductImageGallery from '@/components/product/ProductImageGallery';
+import ProductInfo from '@/components/product/ProductInfo';
+import AddToCartForm from '@/components/product/AddToCartForm';
+import TrustBadges from '@/components/ui/TrustBadges';
+import { Product } from '@/types';
+import ProductSection from '@/components/home/ProductSection';
+import ProductReviews from '@/components/reviews/ProductReviews';
+
+export async function generateStaticParams() {
+  try {
+    const { products } = await publicService.getAllProducts({ limit: 20 });
+    // --- PERFECTLY CORRECTED SLUG ACCESS ---
+    // This now safely handles cases where 'seo' or 'slug' are missing, falling back to the ID.
+    return products.map((product) => ({
+      slug: product.seo?.slug || product._id,
+    }));
+  } catch (error) {
+    console.error("Failed to generate static params for products:", error);
+    return [];
+  }
+}
+
+async function getProduct(slug: string): Promise<Product | null> {
+  try {
+    const product = await publicService.getProductById(slug);
+    return product;
+  } catch (error) {
+    console.error(`Failed to fetch product with slug "${slug}":`, error);
+    return null;
+  }
+}
+
+interface ProductPageProps {
+  params: { slug: string };
+}
+
+const ProductPage: React.FC<ProductPageProps> = async ({ params }) => {
+  const product = await getProduct(params.slug);
+
+  if (!product) {
+    notFound();
+  }
+
+  // NOTE: The separate API call for reviews has been REMOVED. It was incorrect.
+  // The reviews are already populated inside the 'product' object by the getProductById call.
+
+  const relatedProducts = await publicService.getRelatedProducts(product._id, 6).catch(() => []);
+
+  return (
+    <div className="bg-gray-50 py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+          <ProductImageGallery images={product.images} productName={product.name} />
+          <div className="flex flex-col space-y-6">
+            <ProductInfo product={product} />
+            <AddToCartForm product={product} />
+            <TrustBadges />
+          </div>
+        </div>
+
+        <div className="mt-16 bg-white p-6 md:p-8 rounded-lg shadow-sm">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">Product Details</h3>
+          <div 
+            className="prose max-w-none text-gray-600"
+            dangerouslySetInnerHTML={{ __html: product.description }} 
+          />
+          {Object.keys(product.specifications || {}).length > 0 && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold text-gray-800 mb-4">Specifications</h4>
+              <ul className="divide-y divide-gray-200">
+                {Object.entries(product.specifications).map(([key, value]) => (
+                  <li key={key} className="py-3 grid grid-cols-3 gap-4">
+                    <span className="text-sm font-medium text-gray-600">{key}</span>
+                    <span className="text-sm text-gray-800 col-span-2">{String(value)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        
+        {/* --- REVIEWS SECTION --- */}
+        <div id="reviews" className="mt-16">
+          {/* --- PERFECTLY CORRECTED: Passing reviews directly from the product object --- */}
+          {/* The `|| []` provides a failsafe in case the reviews array is not present. */}
+          <ProductReviews product={product} initialReviews={product.reviews || []} />
+        </div>
+        
+        {relatedProducts.length > 0 && (
+          <div className="mt-16">
+            <ProductSection title="You Might Also Like" products={relatedProducts} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ProductPage;
