@@ -10,7 +10,7 @@ import {
 
 // ... (axiosInstance and interceptors remain the same) ...
 const axiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1',
   withCredentials: true,
 });
 
@@ -29,7 +29,8 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api/v1'}/auth/refresh-token`, {}, { withCredentials: true });
+        const refreshBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+        const { data } = await axios.post(`${refreshBase}/auth/refresh-token`, {}, { withCredentials: true });
         const newAccessToken = data.data.accessToken;
         if (typeof window !== 'undefined') localStorage.setItem('accessToken', newAccessToken);
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
