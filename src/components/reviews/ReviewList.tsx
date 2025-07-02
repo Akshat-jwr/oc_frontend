@@ -1,23 +1,33 @@
-// components/reviews/ReviewList.tsx
-
 import React from 'react';
 import { Review } from '@/types';
 import ReviewCard from './ReviewCard';
 
 interface ReviewListProps {
   reviews: Review[];
+  isLoading?: boolean;
 }
 
-const ReviewList: React.FC<ReviewListProps> = ({ reviews }) => {
-  // --- PERFECTLY CORRECTED GUARD CLAUSE ---
-  // This is the most critical fix. We first check if the 'reviews' prop has been provided.
-  // If it's undefined or null, we do not proceed, thus preventing the crash.
-  if (!reviews) {
-    // This can be a loading indicator or null, but it must handle the undefined case.
+const ReviewList: React.FC<ReviewListProps> = ({ reviews, isLoading = false }) => {
+  // Handle loading state
+  if (isLoading) {
+    return (
+      <div className="py-8 text-center text-gray-500">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+        </div>
+        <p className="mt-4">Loading reviews...</p>
+      </div>
+    );
+  }
+
+  // Handle undefined/null reviews safely
+  if (!reviews || !Array.isArray(reviews)) {
     return <div className="py-8 text-center text-gray-500">Loading reviews...</div>;
   }
   
-  // Now that we know 'reviews' is a valid array, we can safely check its length.
+  // Handle empty reviews
   if (reviews.length === 0) {
     return (
       <div className="py-8 text-center text-gray-500">

@@ -1,5 +1,3 @@
-// app/products/[slug]/page.tsx
-
 import React from 'react';
 import { notFound } from 'next/navigation';
 import { publicService } from '@/lib/api';
@@ -14,8 +12,6 @@ import ProductReviews from '@/components/reviews/ProductReviews';
 export async function generateStaticParams() {
   try {
     const { products } = await publicService.getAllProducts({ limit: 20 });
-    // --- PERFECTLY CORRECTED SLUG ACCESS ---
-    // This now safely handles cases where 'seo' or 'slug' are missing, falling back to the ID.
     return products.map((product) => ({
       slug: product.seo?.slug || product._id,
     }));
@@ -46,8 +42,8 @@ const ProductPage: React.FC<ProductPageProps> = async ({ params }) => {
     notFound();
   }
 
-  // NOTE: The separate API call for reviews has been REMOVED. It was incorrect.
-  // The reviews are already populated inside the 'product' object by the getProductById call.
+  // ✅ FIXED: Define reviews from product data
+  const reviews = product.reviews || [];
 
   const relatedProducts = await publicService.getRelatedProducts(product._id, 6).catch(() => []);
 
@@ -57,7 +53,8 @@ const ProductPage: React.FC<ProductPageProps> = async ({ params }) => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
           <ProductImageGallery images={product.images} productName={product.name} />
           <div className="flex flex-col space-y-6">
-            <ProductInfo product={product} />
+            {/* ✅ FIXED: Now reviews is properly defined */}
+            <ProductInfo product={product} currentReviews={reviews} />
             <AddToCartForm product={product} />
             <TrustBadges />
           </div>
@@ -84,11 +81,9 @@ const ProductPage: React.FC<ProductPageProps> = async ({ params }) => {
           )}
         </div>
         
-        {/* --- REVIEWS SECTION --- */}
         <div id="reviews" className="mt-16">
-          {/* --- PERFECTLY CORRECTED: Passing reviews directly from the product object --- */}
-          {/* The `|| []` provides a failsafe in case the reviews array is not present. */}
-          <ProductReviews product={product} initialReviews={product.reviews || []} />
+          {/* ✅ FIXED: Using the same reviews variable */}
+          <ProductReviews product={product} initialReviews={reviews} />
         </div>
         
         {relatedProducts.length > 0 && (

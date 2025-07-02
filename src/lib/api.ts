@@ -110,6 +110,12 @@ export const userService = {
   createOrder: (data: any): Promise<CreateOrderResponse> => {
     return axiosInstance.post('/user/orders', data).then(handleResponse);
   },  // --- PERFECTLY AND DEFINITIVELY CORRECTED RETURN TYPE ---
+  getProductReviews: (productId: string): Promise<{ 
+    reviews: Review[], 
+    pagination: any 
+}> => {
+  return axiosInstance.get(`/user/reviews?productId=${productId}`).then(handleResponse);
+},
   getUserOrders: (filters: any): Promise<{ orders: Order[]; pagination: Pagination; }> => axiosInstance.get('/user/orders', { params: filters }).then(handleResponse),
   getOrderById: (id: string): Promise<Order> => axiosInstance.get(`/user/orders/${id}`).then(handleResponse),
   cancelOrder: (id: string, reason?: string) => axiosInstance.patch(`/user/orders/${id}/cancel`, { reason }),
