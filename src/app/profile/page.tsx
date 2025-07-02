@@ -1,6 +1,7 @@
 // app/profile/page.tsx
-
+// Prevent build-timeouts by forcing dynamic fetch
 'use client';
+export const dynamic = 'force-dynamic';
 
 import React from 'react';
 import { useApp } from '@/context/AppContext';

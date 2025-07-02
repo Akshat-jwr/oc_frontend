@@ -1,6 +1,5 @@
-// app/products/page.tsx
-
 'use client';
+export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -12,6 +11,7 @@ import ProductCard from '@/components/product/ProductCard';
 import Pagination from '@/components/ui/Pagination';
 import FilterSidebar from '@/components/products/FilterSidebar';
 
+// Prevent static pre-rendering; fetch data at runtime
 const VALID_SORT_OPTIONS: SortOption[] = ['popularity', 'newest', 'price', 'rating', 'name'];
 const VALID_ORDER_OPTIONS: OrderOption[] = ['asc', 'desc'];
 

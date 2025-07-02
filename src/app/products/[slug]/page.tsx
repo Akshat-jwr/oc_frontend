@@ -10,17 +10,7 @@ import ProductSection from '@/components/home/ProductSection';
 import ProductReviews from '@/components/reviews/ProductReviews';
 import ProductInfoClient from '@/components/product/ProductInfoClient';
 
-export async function generateStaticParams() {
-  try {
-    const { products } = await publicService.getAllProducts({ limit: 20 });
-    return products.map((product) => ({
-      slug: product.seo?.slug || product._id,
-    }));
-  } catch (error) {
-    console.error("Failed to generate static params for products:", error);
-    return [];
-  }
-}
+export const dynamic = 'force-dynamic';
 
 async function getProduct(slug: string): Promise<Product | null> {
   try {

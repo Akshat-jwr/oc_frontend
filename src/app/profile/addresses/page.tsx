@@ -1,6 +1,10 @@
 // app/profile/addresses/page.tsx
 
+// Prevent build-time timeouts by forcing dynamic fetch
 'use client';
+
+// Disable static generation; fetch dynamically due to build-time timeouts
+export const dynamic = 'force-dynamic';
 
 import React, { useState, useCallback } from 'react';
 import { Address } from '@/types';
