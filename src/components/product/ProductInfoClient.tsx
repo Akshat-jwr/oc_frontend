@@ -1,14 +1,21 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
-import { Product } from '@/types';
+import { Product, Review } from '@/types';
 import { StarIcon } from '@heroicons/react/20/solid';
+import { useProductReviews } from '@/hooks/useProductReviews';
 
-interface ProductInfoProps {
+interface ProductInfoClientProps {
   product: Product;
+  initialReviews: Review[];
 }
 
-const ProductInfo: React.FC<ProductInfoProps> = ({ product }) => {
+const ProductInfoClient: React.FC<ProductInfoClientProps> = ({ product, initialReviews }) => {
   const displayPrice = product.currentPrice ?? product.price;
+  
+  // Use the hook for live data
+  const { reviewCount, averageRating } = useProductReviews(product._id, initialReviews);
 
   return (
     <div className="space-y-4">
@@ -19,14 +26,14 @@ const ProductInfo: React.FC<ProductInfoProps> = ({ product }) => {
           {[...Array(5)].map((_, i) => (
             <StarIcon
               key={i}
-              className={`h-5 w-5 ${product.averageRating > i ? 'text-yellow-400' : 'text-gray-300'}`}
+              className={`h-5 w-5 ${averageRating > i ? 'text-yellow-400' : 'text-gray-300'}`}
               aria-hidden="true"
             />
           ))}
         </div>
         <a href="#reviews" className="ml-3 text-sm font-medium text-amazon-600 hover:text-amazon-700">
-          {product.reviewCount > 0 
-            ? `${product.reviewCount} ${product.reviewCount === 1 ? 'review' : 'reviews'}`
+          {reviewCount > 0 
+            ? `${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'}`
             : 'No reviews yet'
           }
         </a>
@@ -52,16 +59,13 @@ const ProductInfo: React.FC<ProductInfoProps> = ({ product }) => {
 
       <div className="text-sm">
         <span className="font-medium text-gray-700">Category:</span>
-        {product.category?.slug ? (
-          <Link href={`/category/${product.category.slug}`} className="ml-2 text-amazon-600 hover:underline">
+        
+          <Link href={`/category/${product.category.name.toLowerCase()}`} className="ml-2 text-amazon-600 hover:underline">
             {product.category.name}
           </Link>
-        ) : (
-          <span className="ml-2 text-gray-600">{product.category?.name || 'N/A'}</span>
-        )}
       </div>
     </div>
   );
 };
 
-export default ProductInfo;
+export default ProductInfoClient;

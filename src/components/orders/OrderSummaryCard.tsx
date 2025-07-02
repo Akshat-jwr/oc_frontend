@@ -28,11 +28,11 @@ const OrderSummaryCard: React.FC<OrderSummaryCardProps> = ({ order }) => {
           </div>
           <div className="flex justify-between text-sm">
             <dt className="text-gray-600">Shipping</dt>
-            <dd className="text-gray-900">₹{order.shipping.toFixed(2)}</dd>
+            <dd className="text-gray-900">₹0.00</dd>
           </div>
           <div className="flex justify-between text-sm">
             <dt className="text-gray-600">Tax</dt>
-            <dd className="text-gray-900">₹{order.tax.toFixed(2)}</dd>
+            <dd className="text-gray-900">₹0.00</dd>
           </div>
           {order.discount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
@@ -42,7 +42,7 @@ const OrderSummaryCard: React.FC<OrderSummaryCardProps> = ({ order }) => {
           )}
           <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-3 mt-3">
             <dt>Total</dt>
-            <dd>₹{order.total.toFixed(2)}</dd>
+            <dd>₹{(order.subtotal - order.discount).toFixed(2)}</dd>
           </div>
         </dl>
       </div>

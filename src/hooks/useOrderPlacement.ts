@@ -88,7 +88,11 @@ const useOrderPlacement = () => {
       });
       
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to place order.');
+      if (error.response?.status === 429) {
+        toast.error('Too many requests. Please wait a moment and try again.');
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to place order.');
+      }
       setIsPlacingOrder(false);
     }
   };

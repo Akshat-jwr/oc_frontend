@@ -53,15 +53,15 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({ cart }) => {
         </div>
         <div className="flex items-center justify-between text-sm">
           <dt className="text-gray-600">Shipping</dt>
-          <dd className="font-medium text-gray-900">{(summary.estimatedShipping || 0) > 0 ? `₹${(summary.estimatedShipping || 0).toFixed(2)}` : 'Free'}</dd>
+          <dd className="font-medium text-gray-900">Free</dd>
         </div>
         <div className="flex items-center justify-between text-sm">
           <dt className="text-gray-600">Taxes</dt>
-          <dd className="font-medium text-gray-900">₹{(summary.estimatedTax || 0).toFixed(2)}</dd>
+          <dd className="font-medium text-gray-900">₹0.00</dd>
         </div>
         <div className="flex items-center justify-between text-base font-bold text-gray-900 border-t border-gray-200 pt-4 mt-2">
           <dt>Total</dt>
-          <dd>₹{(summary.estimatedTotal || 0).toFixed(2)}</dd>
+          <dd>₹{(summary.totalPrice || 0).toFixed(2)}</dd>
         </div>
       </dl>
       

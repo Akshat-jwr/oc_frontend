@@ -1,10 +1,9 @@
 'use client';
 
 import React from 'react';
-import useSWR from 'swr';
 import { Product, Review } from '@/types';
 import { useApp } from '@/context/AppContext';
-import { userService } from '@/lib/api';
+import { useProductReviews } from '@/hooks/useProductReviews';
 import RatingSummary from './RatingSummary';
 import ReviewList from './ReviewList';
 import ReviewForm from './ReviewForm';
@@ -16,48 +15,25 @@ interface ProductReviewsProps {
 
 const ProductReviews: React.FC<ProductReviewsProps> = ({ product, initialReviews }) => {
   const { isAuthenticated } = useApp();
-
-  // SWR key for fetching product reviews
-  const reviewsKey = ['product-reviews', product._id];
-
-  // ✅ FIXED: Handle the correct API response structure
-  const { data: reviewsData, error, isLoading, mutate } = useSWR(
-    reviewsKey,
-    async () => {
-      try {
-        const response = await userService.getProductReviews(product._id);
-        // ✅ CORRECTLY ACCESS: response.data.reviews (not just response.reviews)
-        console.log('Fetched reviews:', response.reviews);
-        return response.reviews || [];
-      } catch (error) {
-        console.error('Failed to fetch reviews:', error);
-        throw error; // Let SWR handle the error
-      }
-    },
-    {
-      fallbackData: initialReviews,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      // ✅ FORCE REFRESH: Don't use stale data
-      dedupingInterval: 0,
-    }
+  
+  // ✅ FIXED: Use the shared hook
+  const { reviews, reviewCount, averageRating, isLoading, error, mutate } = useProductReviews(
+    product._id, 
+    initialReviews
   );
 
   const canSubmitReview = isAuthenticated;
 
   const handleReviewSubmitted = async () => {
-    // ✅ FORCE REVALIDATION: Clear cache and refetch
     await mutate();
   };
-
-  const reviews = reviewsData || initialReviews || [];
 
   return (
     <div className="bg-white p-6 md:p-8 rounded-lg shadow-sm">
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Customer Reviews</h2>
       
-      {product.reviewCount > 0 && (
-        <RatingSummary averageRating={product.averageRating} reviewCount={product.reviewCount} />
+      {reviewCount > 0 && (
+        <RatingSummary averageRating={averageRating} reviewCount={reviewCount} />
       )}
       
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-12">

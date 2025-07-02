@@ -8,6 +8,7 @@ import TrustBadges from '@/components/ui/TrustBadges';
 import { Product } from '@/types';
 import ProductSection from '@/components/home/ProductSection';
 import ProductReviews from '@/components/reviews/ProductReviews';
+import ProductInfoClient from '@/components/product/ProductInfoClient';
 
 export async function generateStaticParams() {
   try {
@@ -54,7 +55,12 @@ const ProductPage: React.FC<ProductPageProps> = async ({ params }) => {
           <ProductImageGallery images={product.images} productName={product.name} />
           <div className="flex flex-col space-y-6">
             {/* ✅ FIXED: Now reviews is properly defined */}
-            <ProductInfo product={product} currentReviews={reviews} />
+            <>
+  {/* Server-side component for initial render */}
+  {/* <ProductInfo product={product} /> */}
+  {/* Client-side component for live updates - will hydrate over the server component */}
+  <ProductInfoClient product={product} initialReviews={reviews} />
+</>
             <AddToCartForm product={product} />
             <TrustBadges />
           </div>

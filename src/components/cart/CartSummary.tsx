@@ -29,17 +29,15 @@ const CartSummary: React.FC<CartSummaryProps> = ({ cart }) => {
         </div>
         <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
           <dt className="text-sm text-gray-600">Shipping estimate</dt>
-          <dd className="text-sm font-medium text-gray-900">
-            {(summary.estimatedShipping || 0) > 0 ? `₹${(summary.estimatedShipping || 0).toFixed(2)}` : 'Free'}
-          </dd>
+          <dd className="text-sm font-medium text-gray-900">Free</dd>
         </div>
         <div className="border-t border-gray-200 pt-4 flex items-center justify-between">
           <dt className="text-sm text-gray-600">Tax estimate</dt>
-          <dd className="text-sm font-medium text-gray-900">₹{(summary.estimatedTax || 0).toFixed(2)}</dd>
+          <dd className="text-sm font-medium text-gray-900">₹0.00</dd>
         </div>
         <div className="border-t border-gray-200 pt-4 flex items-center justify-between text-base font-medium text-gray-900">
           <dt>Order total</dt>
-          <dd>₹{(summary.estimatedTotal || 0).toFixed(2)}</dd>
+          <dd>₹{(summary.totalPrice || 0).toFixed(2)}</dd>
         </div>
       </dl>
 
