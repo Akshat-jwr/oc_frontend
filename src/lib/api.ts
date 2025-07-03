@@ -99,6 +99,99 @@ export const userService = {
     formData.append('avatar', file);
     return axiosInstance.post('/user/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(handleResponse);
   },
+  searchProducts: async (
+    query: string, 
+    options?: {
+      page?: number;
+      limit?: number;
+      sort?: string;
+      order?: 'asc' | 'desc';
+      category?: string;
+      minPrice?: number;
+      maxPrice?: number;
+      inStock?: boolean;
+    }
+  ): Promise<{ products: Product[], pagination: any }> => {
+    try {
+      // Build query string manually to match your backend expectations
+      const searchParams = new URLSearchParams();
+      searchParams.append('q', query);
+      
+      if (options) {
+        if (options.page) searchParams.append('page', String(options.page));
+        if (options.limit) searchParams.append('limit', String(options.limit));
+        if (options.sort) searchParams.append('sort', options.sort);
+        if (options.order) searchParams.append('order', options.order);
+        if (options.category) searchParams.append('category', options.category);
+        if (options.minPrice !== undefined) searchParams.append('minPrice', String(options.minPrice));
+        if (options.maxPrice !== undefined) searchParams.append('maxPrice', String(options.maxPrice));
+        if (options.inStock !== undefined) searchParams.append('inStock', String(options.inStock));
+      }
+      
+      const url = `/public/search?${searchParams.toString()}`;
+      console.log('Search API URL:', url);
+      
+      const response = await axiosInstance.get(url);
+      const data = handleResponse(response);
+      
+      console.log('Raw search API response:', data);
+      
+      // Handle your actual API response structure
+      return {
+        products: Array.isArray(data) ? data : (data?.products || []),
+        pagination: data?.pagination || {
+          total: Array.isArray(data) ? data.length : 0,
+          page: options?.page || 1,
+          limit: options?.limit || 24,
+          pages: 1,
+          hasNext: false,
+          hasPrev: false
+        }
+      };
+      
+    } catch (error) {
+      console.error('Search products API error:', error);
+      return {
+        products: [],
+        pagination: {
+          total: 0,
+          page: 1,
+          limit: 24,
+          pages: 0,
+          hasNext: false,
+          hasPrev: false
+        }
+      };
+    }
+  },
+
+  // ✅ Keep this exactly as it is (already working)
+  getSearchSuggestions: async (query: string): Promise<string[]> => {
+    try {
+      const response = await axiosInstance.get(`/public/search/suggestions?q=${encodeURIComponent(query)}`);
+      const data = handleResponse(response);
+      
+      if (!Array.isArray(data)) {
+        return [];
+      }
+
+      return data.map(item => {
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object' && item !== null) {
+          return item.value || item.name || item.text || item.title || item.label || String(item);
+        }
+        return String(item);
+      }).filter(item => item.trim().length > 0);
+      
+    } catch (error) {
+      console.error('Search suggestions API error:', error);
+      return [];
+    }
+  },
+
+  globalSearch: (query: string, type: 'all' | 'products' | 'categories' = 'all'): Promise<any> => {
+    return axiosInstance.get(`/public/search?q=${encodeURIComponent(query)}&type=${type}`).then(handleResponse);
+  },
   getCart: (): Promise<Cart> => axiosInstance.get('/user/cart').then(handleResponse),
   addToCart: (productId: string, quantity: number, customizations?: object): Promise<Cart> => axiosInstance.post('/user/cart', { productId, quantity, customizations }).then(handleResponse),
   updateCartItem: (productId: string, quantity: number): Promise<Cart> => axiosInstance.patch(`/user/cart/${productId}`, { quantity }).then(handleResponse),

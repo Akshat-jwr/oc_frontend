@@ -4,9 +4,10 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
-import { AppProvider } from '@/context/AppContext'; // We will create this next
-import Header from '@/components/layout/Header';     // We will create this next
-import Footer from '@/components/layout/Footer';     // We will create this next
+import { AppProvider } from '@/context/AppContext';
+import Header from '@/components/layout/Header';     
+import Footer from '@/components/layout/Footer';   
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Configure the primary font for the application
 const inter = Inter({ subsets: ['latin'] });
@@ -35,7 +36,9 @@ export default function RootLayout({
           }} />
           
           <div className="flex flex-col min-h-screen">
-            <Header />
+            <ErrorBoundary fallback={<div className="h-16 bg-gray-900"></div>}>
+  <Header />
+</ErrorBoundary>
             <main className="flex-grow">
               {children}
             </main>
