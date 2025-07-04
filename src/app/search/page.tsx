@@ -68,8 +68,36 @@ function SearchResultsContent() {
               hasPrev: false,
             },
           });
+        } else if (apiResponse && typeof apiResponse === 'object') {
+          // Ensure pagination object exists even if the API response structure is different
+          const responseObj = apiResponse as any;
+          const products = responseObj.products || [];
+          const pagination = responseObj.pagination || {
+            total: products.length,
+            page: 1,
+            limit: products.length,
+            pages: 1,
+            hasNext: false,
+            hasPrev: false,
+          };
+          
+          setResults({
+            products,
+            pagination,
+          });
         } else {
-          setResults(apiResponse);
+          // Fallback for unexpected response format
+          setResults({
+            products: [],
+            pagination: {
+              total: 0,
+              page: 1,
+              limit: 0,
+              pages: 1,
+              hasNext: false,
+              hasPrev: false,
+            },
+          });
         }
         
       } catch (err: any) {

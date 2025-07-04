@@ -85,7 +85,7 @@ export const publicService = {
   getRelatedProducts: (productId: string, limit: number = 6): Promise<Product[]> => axiosInstance.get(`/public/products/${productId}/related`, { params: { limit } }).then(handleResponse),
   getAllCategories: (params?: { includeEmpty?: boolean; parentOnly?: boolean }): Promise<Category[]> => axiosInstance.get('/public/categories', { params }).then(handleResponse),
   getCategoryById: (id: string): Promise<Category> => axiosInstance.get(`/public/categories/${id}`).then(handleResponse),
-  searchProducts: (query: string, suggestions: boolean = false): Promise<Product[] | string[]> => axiosInstance.get('/public/products/search', { params: { q: query, suggestions } }).then(handleResponse),
+  searchProducts: (query: string, suggestions: boolean = false): Promise<Product[] | string[]> => axiosInstance.get('/public/search', { params: { q: query, suggestions } }).then(handleResponse),
   getSearchSuggestions: (query: string): Promise<string[]> => axiosInstance.get('/public/search/suggestions', { params: { q: query } }).then(handleResponse),
   getFilterOptions: (categoryId?: string): Promise<FilterOptions> => axiosInstance.get('/public/filters', { params: { category: categoryId } }).then(handleResponse),
 };
@@ -113,9 +113,10 @@ export const userService = {
     }
   ): Promise<{ products: Product[], pagination: any }> => {
     try {
-      // Build query string manually to match your backend expectations
+      // Build query string for the global search endpoint
       const searchParams = new URLSearchParams();
       searchParams.append('q', query);
+      searchParams.append('type', 'products'); // Only search for products
       
       if (options) {
         if (options.page) searchParams.append('page', String(options.page));
@@ -128,6 +129,7 @@ export const userService = {
         if (options.inStock !== undefined) searchParams.append('inStock', String(options.inStock));
       }
       
+      // ✅ FIXED: Use /public/search instead of /public/products/search
       const url = `/public/search?${searchParams.toString()}`;
       console.log('Search API URL:', url);
       
@@ -136,7 +138,7 @@ export const userService = {
       
       console.log('Raw search API response:', data);
       
-      // Handle your actual API response structure
+      // Handle the global search response structure
       return {
         products: Array.isArray(data) ? data : (data?.products || []),
         pagination: data?.pagination || {
